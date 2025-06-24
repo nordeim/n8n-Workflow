@@ -1,4 +1,4 @@
-# The Ultimate Guide: Deploying a Local n8n AI Agent on Ubuntu with Docker
+# Guide for Deploying a Local n8n AI Agent on Ubuntu with Docker
 
 ## Table of Contents
 1.  [**Introduction: Your Private AI Powerhouse**](#introduction)
