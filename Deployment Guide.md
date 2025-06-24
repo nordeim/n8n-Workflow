@@ -605,10 +605,13 @@ This will gracefully stop your old container and start a new one using the updat
 
 ---
 
-## Conclusion: You've Done It! {#conclusion}
+## Conclusion: You've Done It!
 
 You have successfully navigated a series of professional-grade tools and concepts to stand up your very own private AI automation platform. You have configured a multi-container application with a database, managed secure credentials, provisioned it with a complex two-part workflow, and successfully tested it.
 
 This local n8n instance is now your sandbox for innovation. You can modify the agent's prompt, add new tools by connecting to any of n8n's 400+ integrations, and build automations that are truly tailored to your needs, all within the secure confines of your own machine.
 
 The journey of an automation expert is one of continuous learning. Keep exploring, keep building, and see what amazing things you can accomplish with your new AI-powered toolkit.
+
+---
+https://aistudio.google.com/app/prompts?state=%7B%22ids%22:%5B%221fsYZvfQ4SvGZoa2k7HM2xo8Gsy49ow8g%22%5D,%22action%22:%22open%22,%22userId%22:%22103961307342447084491%22,%22resourceKeys%22:%7B%7D%7D&usp=sharing, https://drive.google.com/file/d/1jXDPFGurd_938iTfk2S2zetZWxFY7Igb/view?usp=sharing, https://drive.google.com/file/d/1tAlUbTz-Vk5bW7TwQE7ZSK_A2SS4B0B2/view?usp=sharing
