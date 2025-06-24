@@ -26,6 +26,8 @@
 
 > Both guides are **copy-paste ready** and fully annotated—perfect for learning or forking straight into production.
 
+Here is a comprehensive, **[step-by-step guide](https://github.com/nordeim/n8n-Workflow/blob/main/Deployment%20Guide.md)** for deploying the n8n AI agent workflow on a local Docker container running on Ubuntu 24.04.
+
 ---
 
 ## ✨ Quick Glance
