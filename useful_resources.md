@@ -21,3 +21,4 @@ These templates cover various use cases, including AI, business process optimiza
 You can access templates through the official n8n workflow library, GitHub repositories, and community-contributed resources.   
 By exploring these resources, you can find inspiration, learn from existing workflows, and leverage the power of n8n to automate your own tasks and processes.  
 
+https://www.youtube.com/watch?v=pR51uBNb5es
