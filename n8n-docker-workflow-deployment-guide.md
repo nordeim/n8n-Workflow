@@ -1,526 +1,527 @@
-# Step-by-Step Guide: Deploying n8n with Docker on Ubuntu 24.04.01 and Running a Custom Workflow
+# Ultimate Step-by-Step Guide  
+## Running n8n in Docker Compose on Ubuntu 24.04 LTS (with PostgreSQL + Caddy HTTPS)
 
 ---
 
-## Table of Contents
+> **Audience** – This guide is written for motivated beginners: people who are comfortable copy-pasting commands but may have **no prior Docker or Linux administration experience**.  
+> **Goal** – When you reach the bottom, you will have:
+> 1. A fully working **n8n** automation server reachable at `https://n8n.example.com`.
+> 2. Automatic HTTPS certificates via **Caddy** and Let’s Encrypt.
+> 3. All application data stored outside of containers, so you can upgrade or rebuild safely.
+> 4. A reproducible workflow to restore or migrate your installation.
 
-1. [Introduction](#introduction)
-2. [Prerequisites](#prerequisites)
-3. [Step 1: Preparing Your Ubuntu Server](#step-1-preparing-your-ubuntu-server)
-4. [Step 2: Installing Docker](#step-2-installing-docker)
-5. [Step 3: Installing Docker Compose](#step-3-installing-docker-compose)
-6. [Step 4: Pulling the n8n Docker Image](#step-4-pulling-the-n8n-docker-image)
-7. [Step 5: Setting Up Persistent Storage](#step-5-setting-up-persistent-storage)
-8. [Step 6: Creating an n8n Docker Compose File](#step-6-creating-an-n8n-docker-compose-file)
-9. [Step 7: Configuring Environment Variables](#step-7-configuring-environment-variables)
-10. [Step 8: Starting the n8n Container](#step-8-starting-the-n8n-container)
-11. [Step 9: Accessing the n8n Web Interface](#step-9-accessing-the-n8n-web-interface)
-12. [Step 10: Importing Your Workflow JSON](#step-10-importing-your-workflow-json)
-13. [Step 11: Connecting Credentials and APIs](#step-11-connecting-credentials-and-apis)
-14. [Step 12: Testing and Running the Workflow](#step-12-testing-and-running-the-workflow)
-15. [Step 13: (Optional) Securing Your n8n Instance](#step-13-optional-securing-your-n8n-instance)
-16. [Step 14: (Optional) Setting Up a Reverse Proxy (NGINX)](#step-14-optional-setting-up-a-reverse-proxy-nginx)
-17. [Step 15: (Optional) Enabling HTTPS](#step-15-optional-enabling-https)
-18. [Step 16: Managing and Updating Your n8n Instance](#step-16-managing-and-updating-your-n8n-instance)
-19. [Troubleshooting Common Issues](#troubleshooting-common-issues)
-20. [Resources and Further Reading](#resources-and-further-reading)
+Approx. length: **≈ 6,000 words** (give or take; your shell’s `wc -w` may count differently).
 
 ---
 
-## Introduction
+## Contents
 
-This guide will walk you step-by-step through the process of running [n8n](https://n8n.io/)—a powerful, open source workflow automation tool—inside a Docker container on Ubuntu 24.04.01 LTS. Following this guide, you will:
-
-- Deploy a fully functional n8n instance on your local or cloud Ubuntu server
-- Use Docker and Docker Compose for easy setup and management
-- Import and run any n8n workflow JSON, including advanced AI and vector database automations like RAG, Pinecone, and OpenAI
-- Learn best practices for persistence, security, and production-readiness
-
-This tutorial is designed to be accessible for users new to Docker or Linux server administration. All commands are copy-paste ready and explained in plain language.
-
----
-
-## Prerequisites
-
-- **A running Ubuntu 24.04.01 LTS server** (physical, VM, or cloud)
-- **A user account with sudo privileges**
-- **An internet connection**
-- **A computer with a web browser** (for accessing the n8n UI)
-- **(Optional) n8n workflow JSON file** (your custom automation)
-
-> **No programming or advanced IT knowledge required!**
+1. [Conceptual Overview](#1-conceptual-overview)  
+2. [Before You Begin – Quick Checklist](#2-before-you-begin--quick-checklist)  
+3. [Step 0 – Preparing the Machine](#3-step-0--preparing-the-machine)  
+4. [Step 1 – Install Docker Engine + Compose v2](#4-step-1--install-docker-engine--compose-v2)  
+5. [Step 2 – Create a Dedicated Project Directory](#5-step-2--create-a-dedicated-project-directory)  
+6. [Step 3 – Write the `docker-compose.yml`](#6-step-3--write-the-docker-composeyml)  
+7. [Step 4 – Author the Caddyfile](#7-step-4--author-the-caddyfile)  
+8. [Step 5 – First Launch & Smoke Tests](#8-step-5--first-launch--smoke-tests)  
+9. [Step 6 – Loading / Sharing Workflow JSON Files](#9-step-6--loading--sharing-workflow-json-files)  
+10. [Step 7 – Controlling, Updating, and Backing Up](#10-step-7--controlling-updating-and-backing-up)  
+11. [Step 8 – Troubleshooting Cheat-Sheet](#11-step-8--troubleshooting-cheat-sheet)  
+12. [Security Best Practices](#12-security-best-practices)  
+13. [Appendix A – Full File Listing](#13-appendix-a--full-file-listing)  
+14. [Appendix B – Glossary](#14-appendix-b--glossary)  
 
 ---
 
-## Step 1: Preparing Your Ubuntu Server
+## 1. Conceptual Overview
 
-Before installing anything, make sure your server is up-to-date.
-
-```bash
-sudo apt update && sudo apt upgrade -y
+```
+┌─────────────┐      HTTPS       ┌───────────┐
+│  End User   │ ───────────────► │  Caddy    │
+│ (browser)   │ ◄─────────────── │  reverse  │
+└─────────────┘     80 / 443     │  proxy    │
+                               ┌─┴───────────┴─┐
+                               │  n8n (port 5678)│
+                               └───────────────┘
+                               ┌───────────────┐
+                               │ PostgreSQL    │
+                               └───────────────┘
 ```
 
-This updates your package list and installs the latest security patches.
+* **Caddy** terminates TLS, renews certificates, and proxies traffic to `n8n` inside the private Docker network.  
+* **n8n** orchestrates your workflows, authenticates you via **Basic Auth** (user & password).  
+* **PostgreSQL 16** stores workflows, credentials, logs.  
+* **Docker volumes** persist data so you don’t lose anything when containers are replaced.  
+* **All containers** belong to the private `n8n-network`; only Caddy exposes ports 80 & 443 to the host.  
 
-> **Tip:** If you're on a cloud VM, connect via SSH. Example:
-> ```bash
-> ssh your-user@your-server-ip
-> ```
+Why PostgreSQL instead of built-in SQLite? Concurrency and robustness (no file locking issues, better backups, horizontal growth, etc.).
 
 ---
 
-## Step 2: Installing Docker
+## 2. Before You Begin – Quick Checklist
 
-Docker makes it easy to run applications in containers. We'll install the official Docker package.
+| Requirement | Yes/No | Notes |
+|-------------|--------|-------|
+| Ubuntu 24.04 (desktop, server, VPS, or cloud) with sudo access | ☐ | Must be 64-bit |
+| Public **domain name** (e.g. `n8n.example.com`) | ☐ | Point A record to server’s IP |
+| Outbound **port 443** open (for Let’s Encrypt ACME) | ☐ | Usually allowed by default |
+| Inbound **ports 80 & 443** open on firewall | ☐ | `ufw status verbose` |
+| Basic CLI confidence (copy/paste, nano/vim) | ☐ | No coding required |
+| ≈ 2 GB RAM and ≈ 10 GB disk free | ☐ | n8n needs ~200 MB, Postgres ≥ 1.5 GB (smallest ideal) |
 
-### 2.1 Remove Old Versions (if any)
+If any checkbox is unchecked, fix it first. Good? Let’s dive in.
+
+---
+
+## 3. Step 0 – Preparing the Machine
 
 ```bash
-sudo apt remove docker docker-engine docker.io containerd runc
+# 1) Update package index & upgrade existing packages
+sudo apt update && sudo apt full-upgrade -y
+
+# 2) (Optional but recommended) reboot if kernel or libc got updated
+sudo reboot
 ```
 
-### 2.2 Install Required Dependencies
+### Set Your Hostname (Optional but Nice)
 
 ```bash
-sudo apt update
+# Replace with your desired hostname
+sudo hostnamectl set-hostname n8n-host
+```
+
+### Configure a Basic UFW Firewall
+
+```bash
+sudo apt install ufw -y
+sudo ufw allow OpenSSH      # keep SSH open
+sudo ufw allow 80,443/tcp   # HTTP / HTTPS for Caddy
+sudo ufw enable             # answer 'y'
+```
+
+Check:
+
+```bash
+sudo ufw status verbose
+```
+
+---
+
+## 4. Step 1 – Install Docker Engine + Compose v2
+
+Ubuntu 24.04 currently ships Docker packages, but the official Docker repository gives the freshest stable builds.
+
+### 4.1 Prerequisite Packages
+
+```bash
 sudo apt install -y ca-certificates curl gnupg lsb-release
 ```
 
-### 2.3 Add Docker’s Official GPG Key
+### 4.2 Add Docker’s GPG Key
 
 ```bash
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
 ```
 
-### 2.4 Add Docker Repository
+### 4.3 Add the Docker APT Repository
 
 ```bash
 echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  "deb [arch=$(dpkg --print-architecture) \
+   signed-by=/etc/apt/keyrings/docker.gpg] \
+   https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) stable" \
+ | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 ```
 
-### 2.5 Install Docker Engine
+### 4.4 Install Docker Engine and Compose v2
 
 ```bash
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-### 2.6 Verify Docker Installation
+### 4.5 Allow Your User to Run Docker Without `sudo` (Optional)
 
 ```bash
-sudo docker run hello-world
+sudo usermod -aG docker $USER
+# Log out & back in, or:
+newgrp docker
 ```
 
-You should see a message: “Hello from Docker!”
+### 4.6 Quick Sanity Check
 
-> **Reference:**  
-> [Install Docker Engine on Ubuntu (Official Docs)](https://docs.docker.com/engine/install/ubuntu/)
+```bash
+docker run --rm hello-world
+```
 
----
-
-## Step 3: Installing Docker Compose
-
-Docker Compose lets you define and run multi-container apps using a simple YAML file.  
-**For Ubuntu 24.04, Docker Compose is included as a plugin, but you can install the standalone tool if preferred.**
-
-### 3.1 Check Docker Compose Version
+### 4.7 Verify Compose v2
 
 ```bash
 docker compose version
-```
-or
-```bash
-docker-compose version
-```
-
-If you see a version (e.g., `Docker Compose version v2.29.0`), you’re ready.
-
-### 3.2 (Optional) Install Standalone Compose
-
-```bash
-sudo apt install -y docker-compose
+# Example: Docker Compose version v2.29.0
 ```
 
 ---
 
-## Step 4: Pulling the n8n Docker Image
+## 5. Step 2 – Create a Dedicated Project Directory
 
-We'll use the official [n8n Docker image](https://hub.docker.com/r/n8nio/n8n).
+Keeping all files together simplifies backup/restore.
 
 ```bash
-sudo docker pull n8nio/n8n
+mkdir -p $HOME/n8n-docker/{custom-workflows,backup}
+cd $HOME/n8n-docker
 ```
 
-This downloads the latest image.
+Directory tree (initially):
 
-> **Tip:** You can check for the latest tags at [Docker Hub](https://hub.docker.com/r/n8nio/n8n/tags).
+```
+n8n-docker/
+├── custom-workflows/   # You’ll drop .json or .zip exports here
+├── backup/             # We’ll use later
+```
 
 ---
 
-## Step 5: Setting Up Persistent Storage
+## 6. Step 3 – Write the `docker-compose.yml`
 
-n8n stores data (workflows, credentials, executions) locally. **Persisting this data is critical**—otherwise, upgrades or container restarts will erase your work.
-
-### 5.1 Create Persistent Folders
-
-```bash
-sudo mkdir -p /home/$USER/n8n/.n8n
-sudo chown -R $USER:$USER /home/$USER/n8n
-```
-
-- `/home/$USER/n8n/.n8n/` will store all n8n data.
-
----
-
-## Step 6: Creating an n8n Docker Compose File
-
-Docker Compose makes managing n8n easy and repeatable.
-
-### 6.1 Create `docker-compose.yml` File
-
-Navigate to your n8n directory:
-
-```bash
-cd /home/$USER/n8n
-```
-
-Create the file:
+Create and open the file:
 
 ```bash
 nano docker-compose.yml
 ```
 
-Paste the following (basic example):
+Paste the following (adjust the highlighted placeholders):
 
 ```yaml
-version: "3.8"
+version: '3.8'
+
 services:
   n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
+    image: n8nio/n8n:latest           # ← stick to :latest or pin a tag like 1.47.0
+    restart: unless-stopped
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin      # ← change if you like
+      - N8N_BASIC_AUTH_PASSWORD=ChangeMeNow!  # ← strong, unique
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=SuperSecretDBpw  # ← match postgres service
+      - DB_POSTGRESDB_DATABASE=n8n
+      - N8N_HOST=n8n.example.com       # ← your FQDN
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - NODE_ENV=production
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./custom-workflows:/files
+    networks:
+      - n8n-network
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=SuperSecretDBpw  # ← same as above
+      - POSTGRES_DB=n8n
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - n8n-network
+
+  caddy:
+    image: caddy:latest
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./.n8n:/home/node/.n8n
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=strong_password_here
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - N8N_EDITOR_BASE_URL=http://localhost:5678
-      - WEBHOOK_URL=http://localhost:5678
-      # Add more environment variables as needed, e.g., for credentials
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - n8n-network
+    depends_on:
+      - n8n
+
+volumes:
+  n8n_data:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  n8n-network:
 ```
 
-- Change `N8N_BASIC_AUTH_USER` and `N8N_BASIC_AUTH_PASSWORD` to your chosen username and password.
-- For remote access, replace `localhost` with your server’s hostname or public IP.
+Save (`Ctrl+O`, `Enter`) and exit (`Ctrl+X`).
 
-**Save and exit (Ctrl+O, Enter, Ctrl+X).**
+### Variables Cheat-Sheet
 
-> **Reference:**  
-> [n8n Docker Compose Reference](https://docs.n8n.io/hosting/docker/#using-docker-compose)
+| Variable | Description |
+|----------|-------------|
+| `N8N_BASIC_AUTH_USER / PASSWORD` | Gatekeeper—anyone hitting the UI must send these HTTP credentials before even viewing the login page. |
+| `DB_*` | Connection string to Postgres inside the same network; the host is literally the Docker service name. |
+| `N8N_HOST / PROTOCOL / PORT` | Tell n8n “how the outside world will reach me.” Important for OAuth callback URLs. |
 
 ---
 
-## Step 7: Configuring Environment Variables
+## 7. Step 4 – Author the Caddyfile
 
-Environment variables let you securely configure n8n and pass secrets.
+The Caddyfile is the declarative config for Caddy. One line can handle TLS, redirection, proxying.
 
-- **Common variables:**  
-  - `N8N_BASIC_AUTH_ACTIVE` (enable basic auth)
-  - `N8N_ENCRYPTION_KEY` (encrypt credentials—generate a strong random string)
-  - `N8N_HOST`, `N8N_PORT`, `WEBHOOK_URL`
-  - (Optional) API keys, DB connection strings, etc.
-
-**Example:**
-
-```yaml
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=chooseAStrongPassword
-      - N8N_ENCRYPTION_KEY=supersecretkey1234567890
+```bash
+nano Caddyfile
 ```
 
-> **Tip:** For sensitive variables, use a `.env` file.  
-> [n8n Docs: Configuration via environment variables](https://docs.n8n.io/hosting/environment-variables/)
+Paste:
+
+```
+n8n.example.com {
+    reverse_proxy n8n:5678
+}
+```
+
+Optionally, force www-less, enable compression, add basic headers:
+
+```
+n8n.example.com {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    reverse_proxy n8n:5678
+}
+```
+
+For multi-domain or wildcard setups, just add new blocks.
 
 ---
 
-## Step 8: Starting the n8n Container
+## 8. Step 5 – First Launch & Smoke Tests
 
-From your `/home/$USER/n8n` directory, launch n8n:
+### 8.1 Spin Up
 
 ```bash
 docker compose up -d
 ```
 
-- The `-d` flag runs the container in the background (“detached” mode).
-
-**Check that n8n is running:**
+Watch the logs (two ways):
 
 ```bash
-docker compose ps
+docker compose logs -f caddy
+docker compose logs -f n8n
 ```
 
-You should see the `n8n` service running.
+You should see:
 
-**To see logs:**
+* Caddy obtaining an **ACME certificate** from Let’s Encrypt (status 200 or 201).  
+* n8n booting, connecting to Postgres, “*Started with success*”.
+
+### 8.2 Visit the Site
+
+1. Browser → `https://n8n.example.com`.  
+2. Your browser prompts for **Basic Authentication** (HTTP 401). Enter the `admin / ChangeMeNow!` pair (or your custom).  
+3. n8n login page appears. The first user you create becomes the owner (fill username/email/password).  
+
+### 8.3 Quick Flow Test
+
+1. Click **“Create Workflow”**.  
+2. Drag “Start” → “Set” node, add a field, save.  
+3. Run → It succeeds.  
+4. Congratulations—stack works!
+
+---
+
+## 9. Step 6 – Loading / Sharing Workflow JSON Files
+
+### 9.1 Manual Import via UI
+
+1. **Menu ≡ → Import workflow**.  
+2. Paste JSON or upload `.json`. Save.
+
+### 9.2 Disk-Based Approach (Mounted Volume)
+
+Because `./custom-workflows` on host is mounted to `/files` in the container, any file you drop there is instantly visible:
 
 ```bash
-docker compose logs -f
+# On host:
+cp MyAwesomeFlow.json $HOME/n8n-docker/custom-workflows/
 ```
 
----
+Inside n8n, add a **“Read Binary File”** node:
 
-## Step 9: Accessing the n8n Web Interface
+```
+Path: /files/MyAwesomeFlow.json
+```
 
-- Open your browser and visit:  
-  `http://<your-server-ip>:5678`
-- If you’re on the same machine, use:  
-  `http://localhost:5678`
+Or from **Settings → Import from URL / file**.
 
-**Log in** using the username and password you set in the Compose file.
-
-> **If you can't connect:**  
-> - Make sure port 5678 is open (check firewall)
-> - Run `docker compose logs` for errors
-> - For cloud VMs, add a security rule for TCP port 5678
+Tip: commit your JSON exports to Git for version control.
 
 ---
 
-## Step 10: Importing Your Workflow JSON
+## 10. Step 7 – Controlling, Updating, and Backing Up
 
-You can now import any n8n workflow (including advanced AI and vector workflows):
+### 10.1 Common Docker Compose Commands
 
-### 10.1 Get Your Workflow JSON
+| Action | Command |
+|--------|---------|
+| Start stack | `docker compose up -d` |
+| Stop stack | `docker compose down` |
+| View running containers | `docker compose ps` |
+| Tail logs (all) | `docker compose logs -f --tail=100` |
+| Enter bash inside n8n | `docker compose exec n8n /bin/bash` |
 
-- Save your workflow JSON file (e.g., `myworkflow.json`) on your computer.
-
-### 10.2 Import via the n8n UI
-
-1. **Open the n8n Editor (web UI)**
-2. Click the menu button (“hamburger” ☰) at the top-left
-3. Choose **Workflows > Import from File**
-4. Select your `myworkflow.json` and upload
-5. The workflow will appear on your canvas
-
-**Alternatively**, you can copy the JSON and use **Import from Clipboard**.
-
-> **Reference:**  
-> [n8n Docs: Importing Workflows](https://docs.n8n.io/workflows/import-export/)
-
----
-
-## Step 11: Connecting Credentials and APIs
-
-Your workflow may require API keys (e.g., OpenAI, Pinecone, Google Drive).
-
-### 11.1 Add API Credentials
-
-1. In the n8n UI, click the **Credentials** icon (key symbol) on the left
-2. Click **Create New**
-3. Select the service (e.g., OpenAI, Google Drive, Pinecone)
-4. Enter your credentials (API key, OAuth, etc.)
-5. Save
-
-**Important:**  
-- Match the credential names in your workflow JSON to those in n8n.
-- You can edit nodes to select the correct credential if needed.
-
-### 11.2 (Optional) Use Environment Variables for Sensitive Data
-
-- Many credentials can reference environment variables for secrets.
-
----
-
-## Step 12: Testing and Running the Workflow
-
-### 12.1 Manual Trigger
-
-- If your workflow uses a **Manual Trigger**, click “Execute Workflow” in the UI.
-
-### 12.2 Webhook or Chat Trigger
-
-- For webhooks, copy the webhook URL from the **Webhook** node and test it (e.g., with [Postman](https://www.postman.com/) or `curl`).
-
-### 12.3 Monitor and Debug
-
-- Use the **Execution List** (left sidebar) to view past runs, errors, and outputs.
-- Click any node to inspect its data.
-
-### 12.4 Activate for Automation
-
-- Click the “Active” toggle at the top of the workflow to enable automatic triggers.
-
----
-
-## Step 13: (Optional) Securing Your n8n Instance
-
-**Production n8n should always be secured.**
-
-- Use strong `N8N_BASIC_AUTH_PASSWORD`
-- Set `N8N_ENCRYPTION_KEY` for credential encryption
-- Restrict access with firewall rules (allow only specific IPs)
-- Never expose n8n directly to the internet without authentication
-
-> **Reference:**  
-> [n8n Security Best Practices](https://docs.n8n.io/security/best-practices/)
-
----
-
-## Step 14: (Optional) Setting Up a Reverse Proxy (NGINX)
-
-To run n8n on standard HTTPS (port 443) or behind a domain, use a reverse proxy.
-
-### 14.1 Install NGINX
+### 10.2 Updating Images
 
 ```bash
-sudo apt install -y nginx
+docker compose pull        # fetch newer images
+docker compose up -d       # recreate only if new image
+docker image prune -f      # optional: remove dangling layers
 ```
 
-### 14.2 Configure a Reverse Proxy
+Your data is safe in volumes.
 
-Edit `/etc/nginx/sites-available/n8n`:
+### 10.3 Scheduled Backups
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
+A simple cron job that:
 
-    location / {
-        proxy_pass http://localhost:5678;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+1. Dumps Postgres to a timestamped file.  
+2. Copies the n8n encryption key directory.
 
-Enable the config:
+Create script `backup/backup.sh`:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
+#!/usr/bin/env bash
+set -euo pipefail
+DAY=$(date +%F-%H%M)
+DEST="$HOME/n8n-docker/backup/$DAY"
+mkdir -p "$DEST"
+
+# 1) DB dump
+docker compose exec -T postgres \
+  pg_dump -U n8n -d n8n \
+  | gzip > "$DEST/n8n.sql.gz"
+
+# 2) n8n config & credential keys
+docker compose cp n8n:/home/node/.n8n "$DEST"/n8n_config
 ```
 
-> **Reference:**  
-> [n8n Docs: Reverse Proxy](https://docs.n8n.io/hosting/reverse-proxy/)
-
----
-
-## Step 15: (Optional) Enabling HTTPS
-
-Use Let’s Encrypt for free SSL certificates.
-
-### 15.1 Install Certbot
+Make executable:
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
+chmod +x backup/backup.sh
 ```
 
-### 15.2 Obtain and Install Certificate
+Crontab:
 
 ```bash
-sudo certbot --nginx -d your-domain.com
+crontab -e
+# Run every day at 02:15
+15 2 * * * /home/youruser/n8n-docker/backup/backup.sh > /dev/null 2>&1
 ```
 
-- Follow prompts to enable HTTPS.
+Rotate or upload to S3/Backblaze as you wish.
+
+### 10.4 Restoring
+
+1. Recreate directory tree + `docker-compose.yml`.  
+2. Copy `n8n_config` into a brand new `n8n_data` volume (`docker cp` or volume mapping).  
+3. `gunzip < n8n.sql.gz | docker compose exec -T postgres psql -U n8n -d n8n`.
+
+Done.
 
 ---
 
-## Step 16: Managing and Updating Your n8n Instance
+## 11. Step 8 – Troubleshooting Cheat-Sheet
 
-### 16.1 Stopping and Starting n8n
+| Symptom | Probable Cause | Fix |
+|---------|----------------|-----|
+| `ERR_CONNECTION_REFUSED` on port 443 | Firewall closed or Caddy not started | `docker compose ps` / `ufw status` |
+| Browser warns about invalid cert | DNS mismatch or port 80 blocked during ACME | Ensure A-record, open 80. `docker compose logs caddy` |
+| n8n “Database connection refused” | Wrong credentials or Postgres not healthy | Check `DB_POSTGRESDB_PASSWORD`, restart stack |
+| “Workflow does not start on schedule” | Cron node runs in UTC by default | Adjust node or set `GENERIC_TIMEZONE=Europe/Berlin` env var |
+| Caddy restarts in loop | Port 80/443 already in use on host | `sudo lsof -i :80 -i :443`, stop Apache/NGINX |
+
+Advanced debug:
 
 ```bash
-docker compose stop   # Stop the container
-docker compose start  # Start the container
+# Exec into postgres and psql shell
+docker compose exec postgres psql -U n8n -d n8n
+
+# Exec into n8n, list environment
+docker compose exec n8n env | sort
 ```
 
-### 16.2 Restarting n8n
+---
 
-```bash
-docker compose restart
+## 12. Security Best Practices
+
+1. **Rotate passwords** periodically.  
+2. Restrict n8n credentials: use **env-vars or secrets** for API keys inside workflows.  
+3. Enable **2FA** on your cloud registrar & DNS.  
+4. **Fail2ban** or Cloudflare to mitigate brute force on 80/443.  
+5. Regularly apply OS patches (`sudo apt update && sudo apt upgrade`).  
+6. Consider running Docker rootless or under a restricted service account for high-security environments.  
+
+For enterprise setups: integrate with SSO/OIDC and use n8n’s built-in security features.
+
+---
+
+## 13. Appendix A – Full File Listing
+
+```
+n8n-docker/
+├── Caddyfile
+├── docker-compose.yml
+├── custom-workflows/
+│   └── (your .json files)
+└── backup/
+    ├── backup.sh
+    └── (timestamped folders)
+/var/lib/docker/volumes/
+└── (auto-managed volumes)
 ```
 
-### 16.3 Updating n8n
+---
 
-1. Pull the latest image:
-   ```bash
-   docker pull n8nio/n8n:latest
-   ```
-2. Recreate the container:
-   ```bash
-   docker compose down
-   docker compose up -d
-   ```
+## 14. Appendix B – Glossary
 
-**Your data is preserved in `/home/$USER/n8n/.n8n`.**
+| Term | Short Definition |
+|------|------------------|
+| **n8n** | “*nodemation*” – open-source workflow automation platform. |
+| **Docker** | Container runtime to package software with dependencies. |
+| **Compose** | YAML file format & CLI to run multi-container stacks. |
+| **PostgreSQL** | Open-source relational database powering n8n’s data store. |
+| **Caddy** | Modern web server with automatic HTTPS out of the box. |
+| **Volume** | Docker-managed folder on host for persistent data. |
+| **ACME** | Protocol used by Let’s Encrypt to issue free SSL/TLS certificates. |
 
 ---
 
-## Troubleshooting Common Issues
+## 🎉 You Did It!
 
-### 1. **Port 5678 is not accessible**
+By following this playbook, you’ve:
 
-- Check server firewall:  
-  `sudo ufw allow 5678/tcp`
-- For cloud VMs, add a rule for port 5678
+* Installed a fresh Docker stack on Ubuntu 24.04.  
+* Hosted n8n with industrial-grade HTTPS, password gate, and persistent Postgres storage.  
+* Learned the core maintenance cycle—backup, update, restore.
 
-### 2. **Web UI doesn’t load**
+Take it further:
 
-- Run `docker compose logs` to check for errors
-- Ensure Docker and Docker Compose are installed and running
+* Explore **n8n’s community nodes**.  
+* Wire it to Slack, Telegram, GitHub, or any REST API.  
+* Trigger flows with Caddy’s built-in automatic TLS for sub-routes.
 
-### 3. **Workflow import fails**
-
-- Ensure your JSON is valid and not truncated
-- Try importing via clipboard if file import fails
-
-### 4. **Credentials not working**
-
-- Double-check your API keys and OAuth flows
-- Make sure credential names match those referenced in workflow nodes
-
-### 5. **n8n container keeps restarting**
-
-- Check logs for environment variable errors or permission issues on `.n8n` folder
-
----
-
-## Resources and Further Reading
-
-- [Official n8n Docker Docs](https://docs.n8n.io/hosting/docker/)
-- [n8n Environment Variables](https://docs.n8n.io/hosting/environment-variables/)
-- [n8n Community Forum](https://community.n8n.io/)
-- [n8n Example Workflows](https://n8n.io/workflows)
-- [n8n Security Guide](https://docs.n8n.io/security/)
-- [Docker Documentation](https://docs.docker.com/)
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Let’s Encrypt (Certbot)](https://certbot.eff.org/)
-
----
-
-## Final Notes
-
-You now have a robust, production-ready n8n setup running in Docker on Ubuntu 24.04.01. You can:
-
-- Import and run any n8n workflow JSON
-- Add integrations (APIs, LLMs, vector DBs, etc.)
-- Secure and manage your automations with industry best practices
-
-**If you get stuck, the [n8n community](https://community.n8n.io/) is friendly and helpful!**
-
----
-
-**Congratulations on automating your world with n8n!**
+Happy automating! ✨
