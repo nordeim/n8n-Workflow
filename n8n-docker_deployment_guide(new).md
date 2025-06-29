@@ -1,18 +1,18 @@
-$ mkdir -p $HOME/n8n-docker/{custom-workflows,backup}
+$ mkdir -p $HOME/n8n-docker/{custom-workflows,backup}  
 
-$ cd $HOME/n8n-docker
+$ cd $HOME/n8n-docker  
 
-$ ls -l
-total 16
-drwxrwxr-x 2 pete pete 4096 Jun 29 10:54 backup
--rw-rw-r-- 1 pete pete   73 Jun 29 12:13 Caddyfile
-drwxrwxr-x 2 pete pete 4096 Jun 29 10:54 custom-workflows
--rw-rw-r-- 1 pete pete 1868 Jun 29 12:11 docker-compose.yml
+$ ls -l  
+total 16  
+drwxrwxr-x 2 pete pete 4096 Jun 29 10:54 backup  
+-rw-rw-r-- 1 pete pete   73 Jun 29 12:13 Caddyfile  
+drwxrwxr-x 2 pete pete 4096 Jun 29 10:54 custom-workflows  
+-rw-rw-r-- 1 pete pete 1868 Jun 29 12:11 docker-compose.yml  
 
-Steps to apply:
+Steps to apply:  
 
-1. Save that over your existing `docker-compose.yml`.
-2. Ensure your `Caddyfile` still has `tls internal`.
+1. Save that over your existing `docker-compose.yml`.  
+2. Ensure your `Caddyfile` still has `tls internal`.  
 3. Run:
 
    ```bash
@@ -20,7 +20,7 @@ Steps to apply:
    docker-compose up -d
    ```
 
-4. Watch the logs:
+4. Watch the logs:  
 
    ```bash
    docker logs -f postgres    # wait for “database system is ready to accept connections”
@@ -28,13 +28,13 @@ Steps to apply:
    docker-compose logs -f caddy
    ```
 
-5. Finally, test:
+5. Finally, test:  
 
    ```bash
    curl -Lk https://n8n.example.com/
    ```
 
-You should now see n8n’s login page (or JSON) over HTTPS, without any startup errors.
+You should now see n8n’s login page (or JSON) over HTTPS, without any startup errors.  
 
 # docker-compose.yml 
 ```yaml
