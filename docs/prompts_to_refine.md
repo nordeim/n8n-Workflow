@@ -33,3 +33,12 @@ awesome guide! now please create a step-by-step guide with 6000 words to clearly
 
 ---
 please use extensive web searches to validate the attached n8n workflow guide. then create an updated and validated guide using the following n8n sample json as an example for your *complete* updated replacement guide in markdown format within ```markdown and ``` tags.
+
+---
+you are my deep-thinking AI coding expert assistant. I want you to use extensive web searches to get the latest n8n workflow agent official documents, especially on their json format. also search the most popular n8n workflow related forums and knowledge to gather as much useful information as possible to be able to know how to create any type of complex n8n workflow in json format and be able to do it correctly and with minimal errors. all documentations that will be helpful to make use of the latest n8n features to create any type of useful n8n workflow directly in json format.
+
+---
+can you use the documentations you have gathered to create a very detailed and useful n8n workflow json guide? create a document in markdown format with minimum words, that can serve as a authoritative n8n workflow json go-to document guide to craft any type of n8n workflow in json format directly. your very detailed guide with illustrations for common constructs can be longer but not shorter than 8000 words. It will be a source-of-truth for a fresh developer to get quick acquainted with n8n workflow json format.
+
+---
+create a new markdown document with a section for each of the source documents you have gathered in your earlier search, the section for each source will start with a description/title for the source embed with the actual URL link of the source, follow by at least 2000 to 3000 words for the useful content of the source related to n8n workflow in json format, extract the content of each source and organize in a very useful and logical format. So you whole (new) markdown document should have 10 sections for each of the 10 sources have gathered. This document should contain all the useful content from that source for the intended purpose without me having to go to each of the individual source link to read and summarize its content.
