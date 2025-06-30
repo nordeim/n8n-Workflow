@@ -41,3 +41,6 @@ Please use extensive web searches to get the latest n8n workflow agent official 
 
 ---
 create a new markdown document with a section for each of the source documents you have gathered in your earlier search, the section for each source will start with a description/title for the source embed with the actual URL link of the source, follow by at least 2000 to 3000 words for the useful content of the source related to n8n workflow in json format, extract the content of each source and organize in a very useful and logical format. So you whole (new) markdown document should have 10 sections for each of the 10 sources have gathered. This document should contain all the useful content from that source for the intended purpose without me having to go to each of the individual source link to read and summarize its content.
+
+---
+awesome document! unfortunately, you produced it in a language that is foreign to me. Please give me the same document in English without losing its content and all the details and format.
