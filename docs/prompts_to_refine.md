@@ -46,3 +46,9 @@ create a new markdown document with a section for each of the source documents y
 awesome job! please create for me a real-world Microsoft Outlook + AI auto-responder workflow in json format, within json and tags, that is complete enough to be very practical and useful for most common use cases. make sure your workflow json is fully validated and contains details with explanations to help customization for specific accounts.
 ---
 awesome document! unfortunately, you produced it in a language that is foreign to me. Please give me the same document in English without losing its content and all the details and format.
+
+---
+excellent understanding! Attached are all the guide documents I gathered for the n8n workflow automation tool - official documentation URL is https://docs.n8n.io/
+
+Help me to carefully and meticulously review them one by one and collate all the points, then validate the points one by one via extensive online web searches, finally create a *final* validate *master* and *authoritative* *detailed* guide document on n8n workflow json file format with examples and explanations. Your guide document should be good (meaning correct and validated) and detailed enough to be the single source-of-through for any developer wanting to create a complete yet working n8n workflow directly in json code file. Make sure you plan and execute this very important task with utmost diligence, meticulousness and rigorousness. Please take it as a very serious duty and challenge to create a trusty worthy n8n workflow json coding guide document.  
+
