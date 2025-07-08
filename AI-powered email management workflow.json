@@ -1,0 +1,395 @@
+{
+  "name": "AI Email Assistant (Gmail -> Triage -> Task/Draft)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "21712a32-90f3-4e6f-96eb-8e503b878345",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "query": "is:unread -in:spam",
+        "limit": 10,
+        "options": {}
+      },
+      "id": "e8331d24-341e-4b68-80f0-c11579585641",
+      "name": "Find Unread Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        700,
+        340
+      ],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "6d15a2f5-23c2-404c-8367-a06655c6543b",
+      "name": "Process Emails One by One",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        940,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getMessage",
+        "messageId": "={{ $json.id }}",
+        "options": {
+          "format": "full"
+        }
+      },
+      "id": "b906a5b6-724a-40a1-944a-d6021272714c",
+      "name": "Get Full Email Content",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1180,
+        340
+      ],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "jsonOutput": true,
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert executive assistant. Your task is to analyze an incoming email and decide on the appropriate action. You have three possible actions: 'task', 'reply', or 'ignore'.\n\n1.  **'task'**: Use this for emails that require an action to be taken, like a request, an appointment, or a reminder. Extract a clear task title and a detailed description.\n2.  **'reply'**: Use this for emails that need a direct response. You must generate a concise, professional reply. If the email is a simple question, answer it. If it's a request for a meeting, suggest some times.\n3.  **'ignore'**: Use this for newsletters, spam, automated notifications, or anything that doesn't require a specific action or reply.\n\nYour response MUST be a single JSON object with the following structure:\n\n- For a **task**: `{\"action\": \"task\", \"task_title\": \"<A clear, actionable title>\", \"task_description\": \"<Detailed description including key info from the email>\", \"due_date\": \"<YYYY-MM-DD format, estimate based on urgency, default to 3 days from now>\"}`\n- For a **reply**: `{\"action\": \"reply\", \"subject\": \"<The reply subject, usually 'Re: [Original Subject]'>\", \"reply_body\": \"<The full, well-written email body for the reply>\"}`\n- For **ignoring**: `{\"action\": \"ignore\"}`\n\nAnalyze the context, sender, and content to make the best decision. Be decisive."
+            },
+            {
+              "role": "user",
+              "content": "From: {{ $json.payload.headers.find(h => h.name === 'From').value }}\nSubject: {{ $json.payload.headers.find(h => h.name === 'Subject').value }}\n\nBody:\n{{ $json.snippet }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "270ca8c4-a621-4d13-81b8-6a36f6d6eb10",
+      "name": "Analyze Email with AI",
+      "type": "@n8n/n8n-nodes-langchain.openAiChat",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        340
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "value2": "task"
+            },
+            {
+              "value1": "={{ $json.action }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "value2": "reply"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b182103f-7b79-43a9-9831-e1f9a2637f59",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1660,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "card",
+        "operation": "create",
+        "boardId": "YOUR_TRELLO_BOARD_ID",
+        "listId": "YOUR_TRELLO_LIST_ID",
+        "name": "={{ $('Analyze Email with AI').item.json.task_title }}",
+        "description": "={{ $('Analyze Email with AI').item.json.task_description }}\n\n---\n**Original Email Snippet:**\n{{ $('Get Full Email Content').item.json.snippet }}",
+        "options": {
+          "dueDate": "={{ $('Analyze Email with AI').item.json.due_date }}"
+        }
+      },
+      "id": "180373ab-f84b-4a59-ac29-de9be12a233b",
+      "name": "Create Trello Task",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        180
+      ],
+      "credentials": {
+        "trelloOAuth2Api": {
+          "id": "YOUR_TRELLO_CREDENTIAL_ID",
+          "name": "Trello Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "message": "={{ $('Analyze Email with AI').item.json.reply_body }}",
+        "options": {
+          "to": "={{ $('Get Full Email Content').item.json.payload.headers.find(h => h.name === 'From').value }}",
+          "subject": "={{ $('Analyze Email with AI').item.json.subject }}",
+          "threadId": "={{ $('Get Full Email Content').item.json.threadId }}"
+        }
+      },
+      "id": "2b3c224b-32d9-4b2a-ae1f-0e1d2c17d748",
+      "name": "Create Reply Draft in Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1900,
+        340
+      ],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "87ca4322-a987-4340-bbd4-1a3b7d159b3e",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "modify",
+        "messageId": "={{ $('Get Full Email Content').item.json.id }}",
+        "options": {
+          "removeLabelIds": [
+            "UNREAD"
+          ],
+          "addLabelIds": [
+            "YOUR_PROCESSED_LABEL_ID"
+          ]
+        }
+      },
+      "id": "1d8b7a42-5f6e-4b6e-a6a7-e1d5e3c7c2c9",
+      "name": "Mark as Read & Label as Processed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2380,
+        340
+      ],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### AI Email Assistant\nThis workflow automates the daily task of checking an unread email inbox. It uses an AI model to decide whether to create a task, draft a reply, or ignore the email.\n\n**Human-in-the-Loop:** Instead of sending replies automatically, it creates *drafts* in Gmail, allowing for a final human review before sending. Tasks are created automatically in Trello.\n\n**Process:**\n1.  **Trigger:** Runs every 15 minutes.\n2.  **Gmail:** Finds up to 10 unread emails.\n3.  **Loop:** Processes each email individually.\n4.  **AI Analysis:** OpenAI's `gpt-4o-mini` analyzes the email and outputs a structured JSON decision.\n5.  **Routing:** A Switch node directs the flow based on the AI's `action`.\n6.  **Actions:** Creates a Trello card or a Gmail draft.\n7.  **Finalize:** Marks the original email as read and applies a 'Processed-by-AI' label to prevent re-processing."
+      },
+      "id": "ab6c141d-d227-4467-b50a-e37367c301c3",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Find Unread Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Unread Emails": {
+      "main": [
+        [
+          {
+            "node": "Process Emails One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Emails One by One": {
+      "main": [
+        [
+          {
+            "node": "Get Full Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Full Email Content": {
+      "main": [
+        [
+          {
+            "node": "Analyze Email with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Email with AI": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Create Trello Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Reply Draft in Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Trello Task": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Reply Draft in Gmail": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Mark as Read & Label as Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "id": "1",
+      "name": "AI"
+    },
+    {
+      "id": "2",
+      "name": "Gmail"
+    },
+    {
+      "id": "3",
+      "name": "Productivity"
+    }
+  ],
+  "id": "SPlKqD7s1I2nJ3fO"
+}
